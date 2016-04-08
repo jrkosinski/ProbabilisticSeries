@@ -1,0 +1,6 @@
+D:\Clients\Self\ProbabilisticSeries\ProbabilisticSeries\bin\Debug\ProbabilisticSeries.exe.config
+D:\Clients\Self\ProbabilisticSeries\ProbabilisticSeries\bin\Debug\ProbabilisticSeries.exe
+D:\Clients\Self\ProbabilisticSeries\ProbabilisticSeries\bin\Debug\ProbabilisticSeries.pdb
+D:\Clients\Self\ProbabilisticSeries\ProbabilisticSeries\obj\Debug\ProbabilisticSeries.csprojResolveAssemblyReference.cache
+D:\Clients\Self\ProbabilisticSeries\ProbabilisticSeries\obj\Debug\ProbabilisticSeries.exe
+D:\Clients\Self\ProbabilisticSeries\ProbabilisticSeries\obj\Debug\ProbabilisticSeries.pdb
