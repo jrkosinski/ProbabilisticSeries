@@ -9,6 +9,8 @@ namespace Trading.Utilities.Data
 {
     public class DataSet
     {
+        public int Count { get { return this.Rows.Length; } }
+
         public DataRow[] Rows { get; private set; }
 
         public double[] Open { get; private set; }

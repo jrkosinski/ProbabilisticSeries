@@ -157,7 +157,7 @@ namespace ProbabilisticSeries
         public int SeriesMaxLen = 3;
 
 
-        public List<DiscreteFeaturesForDataSet> Run(List<DataSet> dataSets)
+        public void Run(List<DataSet> dataSets)
         {
             List<DiscreteFeaturesForDataSet> discreteFeatures = new List<DiscreteFeaturesForDataSet>(); 
 
@@ -167,15 +167,15 @@ namespace ProbabilisticSeries
             //[1] calculate the features for each dataset 
             foreach (var dataSet in dataSets)
             {
+                /*
                 int[] isUp = new int[dataSet.Rows.Length];
                 int[] X = new int[dataSet.Rows.Length];
 
                 for (int n = 0; n < dataSet.Rows.Length; n++)
                 {
+                    X[n] = IsBreakout1(dataSet.Rows, n) ? 1 : 0;
                     var row = dataSet.Rows[n];
                     isUp[n] = (row.Close > row.Open) ? 1 : 0;
-
-                    X[n] = IsBreakout1(dataSet.Rows, n) ? 1 : 0;
                 }
 
                 List<IIndicator> indicators = new List<IIndicator>();
@@ -227,6 +227,29 @@ namespace ProbabilisticSeries
                 discreteFeatures.Add(new DiscreteFeaturesForDataSet(){ DataSet=dataSet, Features=features, Goals=X});
                 featuresPerDataSet.Add(features);
                 XPerDataSet.Add(X);
+                 */
+
+                int[] X = new int[dataSet.Rows.Length];
+
+                for (int n = 0; n < dataSet.Rows.Length; n++)
+                {
+                    X[n] = IsBreakout1(dataSet.Rows, n) ? 1 : 0;
+                }
+
+                UpDownIndicator isUp = new UpDownIndicator();
+                isUp.Calculate(dataSet);
+
+                TrendIndicator trend = new TrendIndicator(ShortMaLen, LongMaLen, TrendLen);
+                trend.Calculate(dataSet); 
+
+                List<int[]> features = new List<int[]>();
+                features.Add(isUp.Output);
+                features.Add(trend.TrendUp);
+                features.Add(trend.TrendDown);
+
+                discreteFeatures.Add(new DiscreteFeaturesForDataSet() { DataSet = dataSet, Features = features, Goals = X });
+                featuresPerDataSet.Add(features);
+                XPerDataSet.Add(X);
             }
 
             List<string> keys = new List<string>();
@@ -235,8 +258,6 @@ namespace ProbabilisticSeries
             keys.Add("trendDn");
 
             _probabilityRunner.Run(keys, discreteFeatures, SeriesMaxLen);
-
-            return discreteFeatures;
         }
 
         public List<ProbabilityVector> SelectVectors(int minFrequency, double minProbability)
@@ -306,5 +327,96 @@ namespace ProbabilisticSeries
         public List<int[]> Features { get; set; }
 
         public int[] Goals { get; set; }
+    }
+
+    public class UpDownIndicator : IIndicator
+    {
+        public int[] Output { get; private set; }
+
+        public void Calculate(DataSet dataSet)
+        {
+            this.Output = new int[dataSet.Count]; 
+            
+            for (int n = 0; n < dataSet.Count; n++) 
+            {
+                var row = dataSet.Rows[n];
+                this.Output[n] = (row.Close > row.Open) ? 1 : 0;
+            }
+        }
+
+        public void Calculate(double[] data)
+        {
+            throw new NotImplementedException();
+        }
+
+        public string GetOutputString(int index)
+        {
+            return this.Output[index].ToString();
+        }
+    }
+
+    public class TrendIndicator : IIndicator
+    {
+        private Ema _shortMa, _longMa;
+        private int _trendLen;
+
+        public int[] TrendUp { get; private set; }
+
+        public int[] TrendDown { get; private set; }
+
+        public TrendIndicator(int shortMaLen, int longMaLen, int trendLen)
+        {
+            _shortMa = new Ema(shortMaLen);
+            _longMa = new Ema(longMaLen);
+            _trendLen = trendLen;
+        }
+
+        public void Calculate(DataSet dataSet)
+        {
+            this.Calculate(dataSet.Close);
+        }
+
+        public void Calculate(double[] data)
+        {
+            this.TrendUp = new int[data.Length];
+            this.TrendDown = new int[data.Length];
+            int trendUpCount = 0;
+            int trendDnCount = 0;
+
+            _shortMa.Calculate(data);
+            _longMa.Calculate(data); 
+
+            for (int n = 0; n < data.Length; n++)
+            {
+                this.TrendUp[n] = 0;
+                this.TrendDown[n] = 0;
+
+                if (n >= 1)
+                {
+                    if (_shortMa.Output[n] > _shortMa.Output[n - 1] && _longMa.Output[n] > _longMa.Output[n - 1])
+                    {
+                        trendUpCount++;
+                        trendDnCount = 0;
+                    }
+                    else
+                    {
+                        trendUpCount = 0;
+
+                        if (_shortMa.Output[n] < _shortMa.Output[n - 1] && _longMa.Output[n] < _longMa.Output[n - 1])
+                            trendDnCount++;
+                        else
+                            trendDnCount = 0;
+                    }
+                }
+
+                this.TrendUp[n] = (trendUpCount >= _trendLen) ? 1 : 0;
+                this.TrendDown[n] = (trendDnCount >= _trendLen) ? 1 : 0;
+            }
+        }
+
+        public string GetOutputString(int index)
+        {
+            return String.Format("{0}{1}", this.TrendUp[index].ToString()); 
+        }
     }
 }
