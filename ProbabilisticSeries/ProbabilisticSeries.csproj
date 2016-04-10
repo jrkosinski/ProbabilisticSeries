@@ -47,6 +47,7 @@
     <Compile Include="Data\Extensions.cs" />
     <Compile Include="Data\IDataReader.cs" />
     <Compile Include="MarketDataProblem.cs" />
+    <Compile Include="ProbabilityRunner.cs" />
     <Compile Include="Problem1.cs" />
     <Compile Include="Problem2.cs" />
     <Compile Include="Problem3.cs" />
@@ -64,6 +65,7 @@
     <Compile Include="Trading\MovingAverage.cs" />
     <Compile Include="Trading\SimpleVolume.cs" />
     <Compile Include="Trading\Sma.cs" />
+    <Compile Include="_MarketDataRunner.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />
