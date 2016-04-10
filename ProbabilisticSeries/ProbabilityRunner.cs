@@ -14,15 +14,16 @@ namespace ProbabilisticSeries
         public int SeriesMaxLen = 3;
 
 
-        public void Run(List<string> keys, List<List<int[]>> featuresPerDataSet, List<int[]> XPerDataSet, int seriesMaxLen)
+        //public void Run(List<string> keys, List<List<int[]>> featuresPerDataSet, List<int[]> XPerDataSet, int seriesMaxLen)
+        public void Run(List<string> keys, List<DiscreteFeaturesForDataSet> discreteFeatures, int seriesMaxLen)
         {
             //[2] calculate probabilities for each dataset 
             List<Dictionary<string, ProbabilityVector>> probabilitiesPerDataSet = new List<Dictionary<string, ProbabilityVector>>();
 
-            for (int i = 0; i < XPerDataSet.Count; i++)
+            for (int i = 0; i < discreteFeatures.Count; i++)
             {
-                var X = XPerDataSet[i];
-                var features = featuresPerDataSet[i];
+                var X = discreteFeatures[i].Goals;
+                var features = discreteFeatures[i].Features;
 
                 for (int n = (seriesMaxLen - 1); n < X.Length; n++)
                 {

@@ -12,11 +12,13 @@ using Trading.Utilities.TradingSystems;
 
 
 //#: write results out to a file as they come in 
+//#: redesign this with more cohesive data structures (classes) instead of a bunch of separate lists/arrays
 
+//TODO: represent the functions that get the features as indicators, so that they can be reused 
 //TODO: test the results by running a trading system from them dynamically
 //TODO: evaluate trading systems based on different factors including drawdown and win percentage
+//TODO: represent the breakout selector as something dynamic and reusable 
 //TODO: test carefully on very simple datasets that you can verify their correctness manually
-//TODO: redesign this with more cohesive data structures (classes) instead of a bunch of separate lists/arrays
 //TODO: organize the code better 
 //TODO: try ever more complex features
 
@@ -78,6 +80,9 @@ namespace ProbabilisticSeries
                             string outputLine = key + " " + b;
                             Console.WriteLine(outputLine);
                             System.IO.File.AppendAllText(OUTPUT_FILE, outputLine + "\n"); 
+
+                            //[1] a list of inputs (e.g. breakout length, MA lengths, etc) 
+                            //[2] a predictor 
                         }
                     }
 
@@ -152,8 +157,10 @@ namespace ProbabilisticSeries
         public int SeriesMaxLen = 3;
 
 
-        public void Run(List<DataSet> dataSets)
+        public List<DiscreteFeaturesForDataSet> Run(List<DataSet> dataSets)
         {
+            List<DiscreteFeaturesForDataSet> discreteFeatures = new List<DiscreteFeaturesForDataSet>(); 
+
             List<List<int[]>> featuresPerDataSet = new List<List<int[]>>();
             List<int[]> XPerDataSet = new List<int[]>();
 
@@ -217,6 +224,7 @@ namespace ProbabilisticSeries
                 features.Add(trendIsUp);
                 features.Add(trendIsDn);
 
+                discreteFeatures.Add(new DiscreteFeaturesForDataSet(){ DataSet=dataSet, Features=features, Goals=X});
                 featuresPerDataSet.Add(features);
                 XPerDataSet.Add(X);
             }
@@ -226,8 +234,9 @@ namespace ProbabilisticSeries
             keys.Add("trendUp");
             keys.Add("trendDn");
 
-            
-            _probabilityRunner.Run(keys, featuresPerDataSet, XPerDataSet, SeriesMaxLen);
+            _probabilityRunner.Run(keys, discreteFeatures, SeriesMaxLen);
+
+            return discreteFeatures;
         }
 
         public List<ProbabilityVector> SelectVectors(int minFrequency, double minProbability)
