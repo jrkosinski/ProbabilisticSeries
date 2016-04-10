@@ -13,11 +13,11 @@ using Trading.Utilities.TradingSystems;
 
 //#: write results out to a file as they come in 
 //#: redesign this with more cohesive data structures (classes) instead of a bunch of separate lists/arrays
+//#: represent the functions that get the features as indicators, so that they can be reused 
+//#: represent the breakout selector as something dynamic and reusable 
 
-//TODO: represent the functions that get the features as indicators, so that they can be reused 
 //TODO: test the results by running a trading system from them dynamically
 //TODO: evaluate trading systems based on different factors including drawdown and win percentage
-//TODO: represent the breakout selector as something dynamic and reusable 
 //TODO: test carefully on very simple datasets that you can verify their correctness manually
 //TODO: organize the code better 
 //TODO: try ever more complex features
@@ -161,8 +161,8 @@ namespace ProbabilisticSeries
         {
             List<DiscreteFeaturesForDataSet> discreteFeatures = new List<DiscreteFeaturesForDataSet>(); 
 
-            List<List<int[]>> featuresPerDataSet = new List<List<int[]>>();
-            List<int[]> XPerDataSet = new List<int[]>();
+            //List<List<int[]>> featuresPerDataSet = new List<List<int[]>>();
+            //List<int[]> XPerDataSet = new List<int[]>();
 
             //[1] calculate the features for each dataset 
             foreach (var dataSet in dataSets)
@@ -229,12 +229,8 @@ namespace ProbabilisticSeries
                 XPerDataSet.Add(X);
                  */
 
-                int[] X = new int[dataSet.Rows.Length];
-
-                for (int n = 0; n < dataSet.Rows.Length; n++)
-                {
-                    X[n] = IsBreakout1(dataSet.Rows, n) ? 1 : 0;
-                }
+                BreakoutIndicator1 breakoutIndicator = new BreakoutIndicator1(BreakoutLength);
+                breakoutIndicator.Calculate(dataSet); 
 
                 UpDownIndicator isUp = new UpDownIndicator();
                 isUp.Calculate(dataSet);
@@ -247,9 +243,7 @@ namespace ProbabilisticSeries
                 features.Add(trend.TrendUp);
                 features.Add(trend.TrendDown);
 
-                discreteFeatures.Add(new DiscreteFeaturesForDataSet() { DataSet = dataSet, Features = features, Goals = X });
-                featuresPerDataSet.Add(features);
-                XPerDataSet.Add(X);
+                discreteFeatures.Add(new DiscreteFeaturesForDataSet() { DataSet = dataSet, Features = features, Goals = breakoutIndicator.Output });
             }
 
             List<string> keys = new List<string>();
@@ -285,33 +279,6 @@ namespace ProbabilisticSeries
                     {
                         output = false;
                         break;
-                    }
-                }
-            }
-
-            return output;
-        }
-
-        //the close is higher than prev day's, every day. The low is not lower than prev day's low, every day 
-        bool IsBreakout2(Trading.Utilities.Data.DataRow[] rows, int index)
-        {
-            bool output = false;
-
-            if (index < (rows.Length - BreakoutLength))
-            {
-                double start =  rows[index + 1].Open;
-                double gain = (rows[index + BreakoutLength].Close - start);
-                double gainPct = (gain * 100 / start);
-                if (gain > 0 && gainPct >= 1.5)
-                {
-                    output = true;
-                    for (int i = index + 1; i < index + BreakoutLength; i++)
-                    {
-                        if (rows[i].Low < rows[index + 1].Low)
-                        {
-                            output = false;
-                            break;
-                        }
                     }
                 }
             }
@@ -417,6 +384,58 @@ namespace ProbabilisticSeries
         public string GetOutputString(int index)
         {
             return String.Format("{0}{1}", this.TrendUp[index].ToString()); 
+        }
+    }
+
+    //the close is higher than prev day's, every day. The low is not lower than prev day's low, every day 
+    public class BreakoutIndicator1 : IIndicator
+    {
+        private int _breakoutLen; 
+
+        public int[] Output { get; private set; }
+
+        public BreakoutIndicator1(int breakoutLen)
+        {
+            _breakoutLen = breakoutLen;
+        }
+
+        //TODO: optimize 
+        public void Calculate(DataSet dataSet)
+        {
+            this.Output = new int[dataSet.Count];
+
+            for (int n = 0; n < dataSet.Count; n++)
+            {
+                if (n < (dataSet.Count - _breakoutLen))
+                {
+                    this.Output[n] = 1; 
+
+                    for (int i = n + 1; i < n + _breakoutLen; i++)
+                    {
+                        if (dataSet.Rows[i].Low < dataSet.Rows[i - 1].Low)
+                        {
+                            this.Output[n] = 0; 
+                            break;
+                        }
+
+                        if (dataSet.Rows[i].Close < dataSet.Rows[i - 1].Close)
+                        {
+                            this.Output[n] = 0; 
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        public void Calculate(double[] data)
+        {
+            throw new NotImplementedException();
+        }
+
+        public string GetOutputString(int index)
+        {
+            return this.Output[index].ToString();
         }
     }
 }
