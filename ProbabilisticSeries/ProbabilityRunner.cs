@@ -32,14 +32,15 @@ namespace ProbabilisticSeries
                         int[] lengths = new int[keys.Count];
 
                         IterateRecursive(0, n, keys, features, X, lengths, seriesMaxLen, _probabilities);
-                        probabilitiesPerDataSet.Add(_probabilities.Clone());
                     }
                 }
 
+                probabilitiesPerDataSet.Add(_probabilities.Clone());
                 _probabilities.Clear();
             }
 
             //[3] merge the probabilities all together 
+            //TODO: optimize this process, it's very very slow 
 
             //get all unique keys 
             List<string> uniqueKeys = new List<string>();
