@@ -9,7 +9,7 @@ using Trading.Utilities.Indicators;
 
 namespace Trading.Utilities.TradingSystems
 {
-    public class TestTradingSystem : ITradingSystem
+    public class _TestTradingSystem : ITradingSystem
     {
         private int _shortMaLen;
         private int _longMaLen;
@@ -23,7 +23,7 @@ namespace Trading.Utilities.TradingSystems
         public bool[] CloseoutSignal { get; private set; }
 
 
-        public TestTradingSystem(int shortMaLen, int longMaLen, int trendLen, int breakoutLen)
+        public _TestTradingSystem(int shortMaLen, int longMaLen, int trendLen, int breakoutLen)
         {
             _shortMaLen = shortMaLen;
             _longMaLen = longMaLen;

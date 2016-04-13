@@ -45,16 +45,17 @@ namespace ProbabilisticSeries
             {
                 var runner = new MarketDataRunner();
 
-                runner.BreakoutLength = 3; // rand.Next(2, 9);
-                runner.ShortMaLen = rand.Next(7, 21);
-                runner.LongMaLen = rand.Next(runner.ShortMaLen, 80);
-                runner.TrendLen = rand.Next(2, 10);
+                //set up the parameters 
+                int breakoutLength = 3; // rand.Next(2, 9);
+                int shortMaLen = rand.Next(7, 21);
+                int longMaLen = rand.Next(shortMaLen, 80);
+                int trendLen = rand.Next(2, 10);
                 runner.SeriesMaxLen = 3;
 
-                string key = String.Format("{0}|{1}|{2}|{3}", runner.BreakoutLength, runner.ShortMaLen, runner.LongMaLen, runner.TrendLen);
+                string key = String.Format("{0}|{1}|{2}|{3}", breakoutLength, shortMaLen, longMaLen, trendLen);
 
+                //read in the training data 
                 List<DataSet> dataSets = new List<DataSet>();
-
                 CsvDataReader reader = new CsvDataReader() { OpenIndex = 1, HighIndex = 2, LowIndex = 3, CloseIndex = 4, DateIndex = 0, VolumeIndex = 5, RowStartIndex = 1 };
                 dataSets.Add(reader.Read(@"e:\MarketData\t.csv"));
                 dataSets.Add(reader.Read(@"e:\MarketData\c.csv"));
@@ -68,19 +69,57 @@ namespace ProbabilisticSeries
                 dataSets.Add(reader.Read(@"e:\MarketData\cat.csv"));
 
 
+                //TestTrader(dataSets, 3); 
+
+                //set up the indicators 
+                DataFeatureDefinition definition = new DataFeatureDefinition();
+                definition.GoalIndicator = 
+                    new IndicatorOutput() {
+                        Indicator = new BreakoutIndicator1(breakoutLength),
+                        OutputProperty = (i) => { return ((BreakoutIndicator1)i).Output; }
+                    };
+
+                definition.Indicators.Add("isUp",
+                    new IndicatorOutput()
+                    {
+                        Indicator = new UpDownIndicator(),
+                        OutputProperty = (i) => { return ((UpDownIndicator)i).Output; }
+                    });
+
+                TrendIndicator trendIndicator = new TrendIndicator(shortMaLen, longMaLen, trendLen); 
+                definition.Indicators.Add("trendUp",
+                    new IndicatorOutput()
+                    {
+                        Indicator = trendIndicator,
+                        OutputProperty = (i) => { return ((TrendIndicator)i).TrendUp; }
+                    });
+                definition.Indicators.Add("trendDn",
+                    new IndicatorOutput()
+                    {
+                        Indicator = trendIndicator,
+                        OutputProperty = (i) => { return ((TrendIndicator)i).TrendDown; }
+                    });
+                definition.Indicators.Add("shortMaOverLong",
+                    new IndicatorOutput()
+                    {
+                        Indicator = trendIndicator,
+                        OutputProperty = (i) => { return ((TrendIndicator)i).ShortMaOverLong; }
+                    });
+
+
                 if (!results.ContainsKey(key))
                 {
-                    runner.Run(dataSets);
+                    runner.Run(dataSets, definition);
                     var best = runner.SelectVectors(200, 0.12).OrderBy(p => p.Probability).Reverse().ToList(); 
 
                     results.Add(key, best);
 
                     if (best.Count > 0)
                     {
-                        Console.WriteLine("BreakoutLength: {0}", runner.BreakoutLength);
-                        Console.WriteLine("ShortMaLen: {0}", runner.ShortMaLen);
-                        Console.WriteLine("LongMaLen: {0}", runner.LongMaLen);
-                        Console.WriteLine("TrendLen: {0}", runner.TrendLen);
+                        Console.WriteLine("BreakoutLength: {0}", breakoutLength);
+                        Console.WriteLine("ShortMaLen: {0}", shortMaLen);
+                        Console.WriteLine("LongMaLen: {0}", longMaLen);
+                        Console.WriteLine("TrendLen: {0}", trendLen);
                         Console.WriteLine("SeriesMaxLen: {0}", runner.SeriesMaxLen);
 
                         foreach (var b in best)
@@ -94,7 +133,8 @@ namespace ProbabilisticSeries
                             }
 
                             //[1] a list of inputs (e.g. breakout length, MA lengths, etc) 
-                            //[2] a predictor 
+                            //[2] indicators 
+                            //[3] a predictor
                         }
 
                         Console.WriteLine();
@@ -107,17 +147,48 @@ namespace ProbabilisticSeries
             }
         }
 
-        static void TestTrader(List<DataSet> dataSets)
+        static TradingResults TestTrader(List<DataSet> dataSets, int holdPeriod)
         {
-            ITradingSystem ts = new TestTradingSystem(
-                17,
-                76,
-                3,
-                4
-            );
+            //set up the indicators 
+            DataFeatureDefinition definition = new DataFeatureDefinition();
+
+            definition.Indicators.Add("isUp",
+                new IndicatorOutput()
+                {
+                    Indicator = new UpDownIndicator(),
+                    OutputProperty = (i) => { return ((UpDownIndicator)i).Output; }
+                });
+
+            TrendIndicator trendIndicator = new TrendIndicator(11, 30, 8);
+            definition.Indicators.Add("trendUp",
+                new IndicatorOutput()
+                {
+                    Indicator = trendIndicator,
+                    OutputProperty = (i) => { return ((TrendIndicator)i).TrendUp; }
+                });
+            definition.Indicators.Add("trendDn",
+                new IndicatorOutput()
+                {
+                    Indicator = trendIndicator,
+                    OutputProperty = (i) => { return ((TrendIndicator)i).TrendDown; }
+                });
+            definition.Indicators.Add("shortMaOverLong",
+                new IndicatorOutput()
+                {
+                    Indicator = trendIndicator,
+                    OutputProperty = (i) => { return ((TrendIndicator)i).ShortMaOverLong; }
+                });
+
+            definition.Predictors.Add("isUp", new int[] { 0 });
+            definition.Predictors.Add("trendUp", new int[] { 0, 0, 0 });
+            definition.Predictors.Add("shortMaOverLong", new int[] { 0, 0, 0 });
+
+            ITradingSystem ts = new TestTradingSystem(definition, holdPeriod); 
 
             int count = 0; 
-            double startingEquity = 10000; 
+            double startingEquity = 10000;
+            double totalGain = 0; 
+
             foreach (var ds in dataSets)
             {
                 Trader t = new Trader(startingEquity);
@@ -158,7 +229,15 @@ namespace ProbabilisticSeries
 
                 double gain = t.CashPlusEquity - startingEquity;
                 double gainPercent = (100 * gain) / startingEquity;
+
+                totalGain += gain;
             }
+
+            TradingResults output = new TradingResults();
+            var averageGain = (totalGain / (double)dataSets.Count);
+            output.PercentGain = (100 * averageGain) / startingEquity;
+
+            return output; 
         }
     }
 
@@ -166,46 +245,36 @@ namespace ProbabilisticSeries
     {
         private ProbabilityRunner _probabilityRunner = new ProbabilityRunner(); 
 
-        public int BreakoutLength = 3;
-        public int ShortMaLen = 7;
-        public int LongMaLen = 40;
-        public int TrendLen = 10;
         public int SeriesMaxLen = 3;
 
 
-        public void Run(List<DataSet> dataSets)
+        public void Run(List<DataSet> dataSets, DataFeatureDefinition testData)
         {
-            List<DiscreteFeaturesForDataSet> discreteFeatures = new List<DiscreteFeaturesForDataSet>(); 
-
-            //List<List<int[]>> featuresPerDataSet = new List<List<int[]>>();
-            //List<int[]> XPerDataSet = new List<int[]>();
+            List<DiscreteFeaturesForDataSet> discreteFeatures = new List<DiscreteFeaturesForDataSet>();
+            List<string> keys = new List<string>();
 
             //[1] calculate the features for each dataset 
             foreach (var dataSet in dataSets)
             {
-                BreakoutIndicator1 breakoutIndicator = new BreakoutIndicator1(BreakoutLength);
-                breakoutIndicator.Calculate(dataSet); 
+                //calculate all indicators 
+                var indicators = testData.GetUniqueIndicators();
+                foreach (var ind in indicators)
+                    ind.Calculate(dataSet);
 
-                UpDownIndicator isUp = new UpDownIndicator();
-                isUp.Calculate(dataSet);
+                testData.GoalIndicator.Indicator.Calculate(dataSet); 
 
-                TrendIndicator trend = new TrendIndicator(ShortMaLen, LongMaLen, TrendLen);
-                trend.Calculate(dataSet); 
 
+                //extract the outputs 
                 List<int[]> features = new List<int[]>();
-                features.Add(isUp.Output);
-                features.Add(trend.TrendUp);
-                features.Add(trend.TrendDown);
-                features.Add(trend.ShortMaOverLong);
+                foreach(var ind in testData.Indicators)
+                {
+                    if (!keys.Contains(ind.Key))
+                        keys.Add(ind.Key); 
+                    features.Add(ind.Value.Output); 
+                }
 
-                discreteFeatures.Add(new DiscreteFeaturesForDataSet() { DataSet = dataSet, Features = features, Goals = breakoutIndicator.Output });
+                discreteFeatures.Add(new DiscreteFeaturesForDataSet() { DataSet = dataSet, Features = features, Goals = testData.GoalIndicator.Output });
             }
-
-            List<string> keys = new List<string>();
-            keys.Add("upDown");
-            keys.Add("trendUp");
-            keys.Add("trendDn");
-            keys.Add("shortMaOverLong");
 
             _probabilityRunner.Run(keys, discreteFeatures, SeriesMaxLen);
         }
@@ -213,33 +282,6 @@ namespace ProbabilisticSeries
         public List<ProbabilityVector> SelectVectors(int minFrequency, double minProbability)
         {
             return _probabilityRunner.SelectVectors(minFrequency, minProbability);
-        }
-
-        //the close is higher than prev day's, every day. The low is not lower than prev day's low, every day 
-        bool IsBreakout1(Trading.Utilities.Data.DataRow[] rows, int index)
-        {
-            bool output = false;
-
-            if (index < (rows.Length - BreakoutLength))
-            {
-                output = true;
-                for (int i = index + 1; i < index + BreakoutLength; i++)
-                {
-                    if (rows[i].Low < rows[i - 1].Low)
-                    {
-                        output = false;
-                        break;
-                    }
-
-                    if (rows[i].Close < rows[i - 1].Close)
-                    {
-                        output = false;
-                        break;
-                    }
-                }
-            }
-
-            return output;
         }
     }
 
@@ -252,7 +294,7 @@ namespace ProbabilisticSeries
         public int[] Goals { get; set; }
     }
 
-    public class UpDownIndicator : IIndicator
+    class UpDownIndicator : IIndicator
     {
         public int[] Output { get; private set; }
 
@@ -278,7 +320,7 @@ namespace ProbabilisticSeries
         }
     }
 
-    public class TrendIndicator : IIndicator
+    class TrendIndicator : IIndicator
     {
         private Ema _shortMa, _longMa;
         private int _trendLen;
@@ -349,7 +391,7 @@ namespace ProbabilisticSeries
     }
 
     //the close is higher than prev day's, every day. The low is not lower than prev day's low, every day 
-    public class BreakoutIndicator1 : IIndicator
+    class BreakoutIndicator1 : IIndicator
     {
         private int _breakoutLen; 
 
@@ -373,11 +415,11 @@ namespace ProbabilisticSeries
 
                     for (int i = n + 1; i < n + _breakoutLen+1; i++)
                     {
-                        //if (dataSet.Rows[i].Low < dataSet.Rows[i - 1].Low)
-                        //{
-                        //    this.Output[n] = 0; 
-                        //    break;
-                        //}
+                        if (dataSet.Rows[i].Low < dataSet.Rows[n+1].Low)
+                        {
+                            this.Output[n] = 0;
+                            break;
+                        }
 
                         if (dataSet.Rows[i].Close < dataSet.Rows[i - 1].Close)
                         {
@@ -398,5 +440,148 @@ namespace ProbabilisticSeries
         {
             return this.Output[index].ToString();
         }
+    }
+
+    class DataFeatureDefinition
+    {
+        public Dictionary<string, IndicatorOutput> Indicators { get; private set; }
+
+        public IndicatorOutput GoalIndicator { get; set; }
+
+        public Dictionary<string, int[]> Predictors { get; private set; }
+
+        public List<IIndicator> GetUniqueIndicators()
+        {
+            List<IIndicator> output = new List<IIndicator>();
+
+            foreach (var value in Indicators)
+            {
+                if (!output.Contains(value.Value.Indicator))
+                {
+                    output.Add(value.Value.Indicator); 
+                }
+            }
+
+            return output; 
+        }
+
+        public Dictionary<string, int[]> GetAllOutputs()
+        {
+            Dictionary<string, int[]> outputs = new Dictionary<string, int[]>();
+
+            foreach (var i in Indicators)
+            {
+                outputs.Add(i.Key, i.Value.Output); 
+            }
+
+            return outputs; 
+        }
+
+
+        public DataFeatureDefinition()
+        {
+            this.Indicators = new Dictionary<string, IndicatorOutput>();
+            this.Predictors = new Dictionary<string, int[]>(); 
+        }
+    }
+
+    class IndicatorOutput
+    {
+        public IIndicator Indicator { get; set; }
+
+        public Func<IIndicator, int[]> OutputProperty { get; set; }
+
+        public int[] Output
+        {
+            get {
+                if (this.Indicator != null && this.OutputProperty != null)
+                    return this.OutputProperty(this.Indicator); 
+
+                return new int[0]; 
+            }
+        }
+    }
+
+
+    class TestTradingSystem : ITradingSystem
+    {
+        private DataFeatureDefinition _definition;
+        private int _holdPeriod = 0; 
+
+        public bool[] BuySignal { get; private set; }
+
+        public bool[] SellSignal { get; private set; }
+
+        public bool[] CloseoutSignal { get; private set; }
+
+
+        public TestTradingSystem(DataFeatureDefinition definition, int holdPeriod)
+        {
+            _definition = definition;
+            _holdPeriod = holdPeriod;
+        }
+
+        public void Calculate(DataSet dataSet)
+        {
+            this.BuySignal = new bool[dataSet.Rows.Length];
+            this.SellSignal = new bool[dataSet.Rows.Length];
+            this.CloseoutSignal = new bool[dataSet.Rows.Length];
+
+            DataSetWithIndicators ds = new DataSetWithIndicators(dataSet, _definition.GetUniqueIndicators().ToArray());
+
+            var outputs = _definition.GetAllOutputs(); 
+
+            int buyIndex = -1;
+            for (int n = 0; n < dataSet.Rows.Length; n++)
+            {
+                var row = dataSet.Rows[n];
+
+                if (buyIndex >= 0)
+                {
+                    if (n >= buyIndex + _holdPeriod)
+                        CloseoutSignal[n] = true;
+
+                    if (CloseoutSignal[n])
+                        buyIndex = -1;
+                }
+                else
+                {
+                    bool isMatch = true; 
+                    foreach (var predictor in _definition.Predictors)
+                    {
+                        if (predictor.Value.Length > (n+1))
+                        {
+                            isMatch = false;
+                            break;
+                        }
+
+                        for (int i = 0; i < predictor.Value.Length; i++)
+                        {
+                            var thisIndex = ((n-predictor.Value.Length)+i)+1;
+                            if (predictor.Value[i] != outputs[predictor.Key][thisIndex])
+                            {
+                                isMatch = false;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (isMatch)
+                    {
+                        buyIndex = n;
+                        BuySignal[n] = true;
+                    }
+                }
+            }
+        }
+    }
+
+    class TradingResults
+    {
+        public double PercentGain { get; set; }
+
+        public double MaxDrawdown { get; set; }
+
+        public double AverageDrawdown { get; set; }
     }
 }
