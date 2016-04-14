@@ -172,13 +172,20 @@ namespace ProbabilisticSeries
                 if (lengths[n] > 0)
                 {
                     if (keyBuilder.Length > 0)
-                        keyBuilder.Append(":");
+                        keyBuilder.Append(",");
 
                     int start = (currentIndex - (lengths[n] - 1));
                     keyBuilder.Append(keys[n]);
+                    keyBuilder.Append(":");
 
-                    for (int i = start; i < (start + lengths[n]); i++)
+                    int end = start + lengths[n];
+                    for (int i = start; i < (end); i++)
+                    {
                         keyBuilder.Append(features[n][i].ToString());
+
+                        if (i < end-1)
+                            keyBuilder.Append("|");
+                    }
                 }
             }
 

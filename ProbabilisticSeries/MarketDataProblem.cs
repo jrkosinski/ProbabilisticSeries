@@ -20,6 +20,7 @@ using Trading.Utilities.TradingSystems;
 //TODO: evaluate trading systems based on different factors including drawdown and win percentage
 //TODO: test the results by running a trading system from them dynamically
 //TODO: try multithreading 
+//TODO: use a stop order definition 
 //TODO: optimize inside probabilityrunner
 //TODO: organize the relationship between features & keys better 
 //TODO: organize the code better 
@@ -40,6 +41,7 @@ namespace ProbabilisticSeries
             Dictionary<string, List<ProbabilityVector>> results = new Dictionary<string, List<ProbabilityVector>>();
             Random rand = new Random() ;
             ProbabilityVector bestSoFar = new ProbabilityVector();
+            double bestGainSoFar = 0; 
 
             while (true)
             {
@@ -128,17 +130,21 @@ namespace ProbabilisticSeries
                             Console.WriteLine(outputLine);
                             System.IO.File.AppendAllText(OUTPUT_FILE, outputLine + "\n");
 
-                            if (b.Probability > bestSoFar.Probability)    {
+                            //run a trading system 
+                            definition.Predictors = PredictorsFromKey(b.Key);
+                            var r = TestTrader(dataSets, definition, breakoutLength);
+
+                            //if (b.Probability > bestSoFar.Probability)    {
+                            if (r.PercentGain > bestGainSoFar){
+                                bestGainSoFar = r.PercentGain; 
                                 bestSoFar = b;
                             }
 
-                            //[1] a list of inputs (e.g. breakout length, MA lengths, etc) 
-                            //[2] indicators 
-                            //[3] a predictor
+                            Console.WriteLine(r.PercentGain.ToString() + "%"); 
                         }
 
                         Console.WriteLine();
-                        Console.WriteLine("Best so far: " + bestSoFar.ToString());
+                        Console.WriteLine("Best so far: " + bestSoFar.ToString() + " " + bestGainSoFar.ToString() + "%");
                         System.IO.File.AppendAllText(OUTPUT_FILE, bestSoFar.ToString() + "\n");
                     }
 
@@ -147,8 +153,9 @@ namespace ProbabilisticSeries
             }
         }
 
-        static TradingResults TestTrader(List<DataSet> dataSets, int holdPeriod)
+        static TradingResults TestTrader(List<DataSet> dataSets, DataFeatureDefinition definition, int holdPeriod)
         {
+            /*
             //set up the indicators 
             DataFeatureDefinition definition = new DataFeatureDefinition();
 
@@ -182,6 +189,7 @@ namespace ProbabilisticSeries
             definition.Predictors.Add("isUp", new int[] { 0 });
             definition.Predictors.Add("trendUp", new int[] { 0, 0, 0 });
             definition.Predictors.Add("shortMaOverLong", new int[] { 0, 0, 0 });
+            */
 
             ITradingSystem ts = new TestTradingSystem(definition, holdPeriod); 
 
@@ -238,6 +246,29 @@ namespace ProbabilisticSeries
             output.PercentGain = (100 * averageGain) / startingEquity;
 
             return output; 
+        }
+
+        static Dictionary<string, int[]> PredictorsFromKey(string key)
+        {
+            Dictionary<string, int[]> output = new Dictionary<string, int[]>(); 
+
+            string[] items = key.Split(',');
+
+            foreach (string item in items)
+            {
+                string[] pair = item.Split(':');
+
+                string k = pair[0];
+                string[] p = pair[1].Split('|');
+
+                int[] values = new int[p.Length];
+                for (int n = 0; n < p.Length; n++)
+                    values[n] = Int32.Parse(p[n]);
+
+                output.Add(k, values);
+            }
+
+            return output;
         }
     }
 
@@ -448,7 +479,7 @@ namespace ProbabilisticSeries
 
         public IndicatorOutput GoalIndicator { get; set; }
 
-        public Dictionary<string, int[]> Predictors { get; private set; }
+        public Dictionary<string, int[]> Predictors { get; set; }
 
         public List<IIndicator> GetUniqueIndicators()
         {

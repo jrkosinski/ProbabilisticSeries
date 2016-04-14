@@ -31,13 +31,13 @@ namespace Trading.Utilities.TradingSystems
         public void OpenPosition(Position position)
         {
             var cost = (position.AbsoluteShares * position.Price);
-            if (cost > this.Cash)
-                throw new Exception("Trader cannot afford this trade.");
+            if (cost <= this.Cash)
+            {
+                this.Cash -= cost;
+                this.Equity += cost;
 
-            this.Cash -= cost;
-            this.Equity += cost;
-
-            this._positions.Add(position);
+                this._positions.Add(position);
+            }
         }
 
         public void ClosePosition(string symbol, double price)
@@ -62,14 +62,14 @@ namespace Trading.Utilities.TradingSystems
                     this.Cash += (position.AbsoluteShares * price);
                 }
 
-                Console.WriteLine(
-                        String.Format("Closing {0} position in {1} for profit of {2} or {3}%. Total worth: {4}.",
-                        position.IsLong ? "long" : "short",
-                        symbol,
-                        profit.ToString("0.##"),
-                        ((profit / originalCost) * 100).ToString("0.00"),
-                        this.CashPlusEquity.ToString("0")
-                    ));
+                //Console.WriteLine(
+                //        String.Format("Closing {0} position in {1} for profit of {2} or {3}%. Total worth: {4}.",
+                //        position.IsLong ? "long" : "short",
+                //        symbol,
+                //        profit.ToString("0.##"),
+                //        ((profit / originalCost) * 100).ToString("0.00"),
+                //        this.CashPlusEquity.ToString("0")
+                //    ));
 
                 //in case there are other positions in the same 
                 this._positions.Remove(position);
