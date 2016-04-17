@@ -46,11 +46,14 @@
     <Compile Include="Data\DataSet.cs" />
     <Compile Include="Data\Extensions.cs" />
     <Compile Include="Data\IDataReader.cs" />
+    <Compile Include="Indicators.cs" />
     <Compile Include="MarketDataProblem.cs" />
+    <Compile Include="MarketDataRunner.cs" />
     <Compile Include="ProbabilityRunner.cs" />
     <Compile Include="Problem1.cs" />
     <Compile Include="Problem2.cs" />
     <Compile Include="Problem3.cs" />
+    <Compile Include="TestTradingSystem.cs" />
     <Compile Include="TradingSystem\Position.cs" />
     <Compile Include="TradingSystem\Trader.cs" />
     <Compile Include="TradingSystem\_TestTradingSystem.cs" />
