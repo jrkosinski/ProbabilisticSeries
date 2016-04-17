@@ -20,4 +20,13 @@ namespace Trading.Utilities.TradingSystems
 
         void Calculate(DataSet data);
     }
+
+    public class TradingResults
+    {
+        public double PercentGain { get; set; }
+
+        public double MaxDrawdown { get; set; }
+
+        public double AverageDrawdown { get; set; }
+    }
 }

@@ -15,10 +15,11 @@ using Trading.Utilities.TradingSystems;
 //#: redesign this with more cohesive data structures (classes) instead of a bunch of separate lists/arrays
 //#: represent the functions that get the features as indicators, so that they can be reused 
 //#: represent the breakout selector as something dynamic and reusable 
+//#: test the results by running a trading system from them dynamically
 
+//TODO: encode as trinary (-1, 0, 1) to save processing 
 //TODO: test carefully on very simple datasets that you can verify their correctness manually
 //TODO: evaluate trading systems based on different factors including drawdown and win percentage
-//TODO: test the results by running a trading system from them dynamically
 //TODO: try multithreading 
 //TODO: use a stop order definition 
 //TODO: optimize inside probabilityrunner
@@ -26,6 +27,8 @@ using Trading.Utilities.TradingSystems;
 //TODO: organize the code better 
 //TODO: try ever more complex features
 //TODO: optimize by pre-calculating EMAs etc. for each dataset (this will yield marginal improvement - better to optimize inside the function) 
+//TODO: tighten up buy/sell/closeout logic & prices 
+//TODO: optimize with tighter relationship between trader and trading system signals
 
 namespace ProbabilisticSeries
 {
@@ -41,7 +44,7 @@ namespace ProbabilisticSeries
             Dictionary<string, List<ProbabilityVector>> results = new Dictionary<string, List<ProbabilityVector>>();
             Random rand = new Random() ;
             ProbabilityVector bestSoFar = new ProbabilityVector();
-            double bestGainSoFar = 0; 
+            double bestRatingSoFar = 0; 
 
             while (true)
             {
@@ -52,7 +55,7 @@ namespace ProbabilisticSeries
                 int shortMaLen = rand.Next(7, 21);
                 int longMaLen = rand.Next(shortMaLen, 80);
                 int trendLen = rand.Next(2, 10);
-                runner.SeriesMaxLen = 3;
+                runner.SeriesMaxLen = 2;
 
                 string key = String.Format("{0}|{1}|{2}|{3}", breakoutLength, shortMaLen, longMaLen, trendLen);
 
@@ -77,8 +80,8 @@ namespace ProbabilisticSeries
                 DataFeatureDefinition definition = new DataFeatureDefinition();
                 definition.GoalIndicator = 
                     new IndicatorOutput() {
-                        Indicator = new BreakoutIndicator1(breakoutLength),
-                        OutputProperty = (i) => { return ((BreakoutIndicator1)i).Output; }
+                        Indicator = new BreakoutIndicator2(breakoutLength),
+                        OutputProperty = (i) => { return ((BreakoutIndicator2)i).Output; }
                     };
 
                 definition.Indicators.Add("isUp",
@@ -106,6 +109,12 @@ namespace ProbabilisticSeries
                     {
                         Indicator = trendIndicator,
                         OutputProperty = (i) => { return ((TrendIndicator)i).ShortMaOverLong; }
+                    });
+                definition.Indicators.Add("newHigh",
+                    new IndicatorOutput()
+                    {
+                        Indicator = trendIndicator,
+                        OutputProperty = (i) => { return ((TrendIndicator)i).NewHigh; }
                     });
 
 
@@ -135,16 +144,17 @@ namespace ProbabilisticSeries
                             var r = TestTrader(dataSets, definition, breakoutLength);
 
                             //if (b.Probability > bestSoFar.Probability)    {
-                            if (r.PercentGain > bestGainSoFar){
-                                bestGainSoFar = r.PercentGain; 
+                            var rating = RateTradingResults(r); 
+                            if ((rating) > bestRatingSoFar){
+                                bestRatingSoFar = rating; 
                                 bestSoFar = b;
                             }
 
-                            Console.WriteLine(r.PercentGain.ToString() + "%"); 
+                            Console.WriteLine("{0} - {1} : {2}", r.PercentGain, r.AverageDrawdown, rating); 
                         }
 
                         Console.WriteLine();
-                        Console.WriteLine("Best so far: " + bestSoFar.ToString() + " " + bestGainSoFar.ToString() + "%");
+                        Console.WriteLine("Best so far: " + bestSoFar.ToString() + " " + bestRatingSoFar.ToString());
                         System.IO.File.AppendAllText(OUTPUT_FILE, bestSoFar.ToString() + "\n");
                     }
 
@@ -195,7 +205,8 @@ namespace ProbabilisticSeries
 
             int count = 0; 
             double startingEquity = 10000;
-            double totalGain = 0; 
+            double totalGain = 0;
+            List<double> drawdowns = new List<double>(); 
 
             foreach (var ds in dataSets)
             {
@@ -203,37 +214,65 @@ namespace ProbabilisticSeries
                 bool buyNext = false;
                 ts.Calculate(ds);
 
-                for (int n = 0; n < ts.BuySignal.Length; n++)
+                double highThisRound = 0;
+                double maxDrawdown = 0; 
+                double buyPrice = 0; 
+                double stopOrder = 0; 
+
+                for (int n = 0; n < ds.Count; n++)
                 {
-                    var row = ds.Rows[n]; 
+                    var row = ds.Rows[n];
+
+                    //calculate drawdown
+                    if (t.CashPlusEquity > highThisRound)
+                        highThisRound = t.CashPlusEquity;
+
+                    var drawdown = 100 * (highThisRound - t.CashPlusEquity) / highThisRound;
+                    if (drawdown > maxDrawdown)
+                        maxDrawdown = drawdown;
 
                     if (t.HasPosition("X"))
                     {
+                        //time to close out? 
                         if (ts.CloseoutSignal[n])
-                            t.ClosePosition("X", row.Close); 
+                            t.ClosePosition("X", row.Close);
+                        else if (row.Low < stopOrder)
+                            t.ClosePosition("X", stopOrder); 
                     }
                     else
                     {
+                        //time to buy? 
                         if (buyNext)
                         {
-                            if (row.Open >= ds.Rows[n - 1].Low && !t.HasPosition("X"))
+                            //open a position
+                            if (!t.HasPosition("X"))
                             {
-                                var price = row.Open;
-                                t.OpenPosition(new Position("X", (int)(t.Cash / price), price));
-                                count++;
+                                if (row.Open > 0)
+                                {
+                                    var price = row.Open;
+                                    t.OpenPosition(new Position("X", (int)(t.Cash / price), price));
+                                    buyPrice = price;
+                                    stopOrder = row.Low;
+                                    count++;
+                                }
                             }
                             buyNext = false;
                         }
                         else
                         {
+                            //buy next round at open
                             if (ts.BuySignal[n] && !t.HasPosition("X"))
                                 buyNext = true;
                         }
                     }
                 }
 
+                //close remaining position
                 if (t.HasPosition("X"))
                     t.ClosePosition("X", ds.Rows[ds.Rows.Length - 1].Close);
+
+                //calculate drawdown
+                drawdowns.Add(maxDrawdown);
 
                 double gain = t.CashPlusEquity - startingEquity;
                 double gainPercent = (100 * gain) / startingEquity;
@@ -245,30 +284,42 @@ namespace ProbabilisticSeries
             var averageGain = (totalGain / (double)dataSets.Count);
             output.PercentGain = (100 * averageGain) / startingEquity;
 
+            //calculate drawdown
+            output.MaxDrawdown = drawdowns.Max();
+            output.AverageDrawdown = drawdowns.Average(); 
+
             return output; 
         }
 
         static Dictionary<string, int[]> PredictorsFromKey(string key)
         {
-            Dictionary<string, int[]> output = new Dictionary<string, int[]>(); 
+            Dictionary<string, int[]> output = new Dictionary<string, int[]>();
 
-            string[] items = key.Split(',');
-
-            foreach (string item in items)
+            if (key.Length > 0)
             {
-                string[] pair = item.Split(':');
+                string[] items = key.Split(',');
 
-                string k = pair[0];
-                string[] p = pair[1].Split('|');
+                foreach (string item in items)
+                {
+                    string[] pair = item.Split(':');
 
-                int[] values = new int[p.Length];
-                for (int n = 0; n < p.Length; n++)
-                    values[n] = Int32.Parse(p[n]);
+                    string k = pair[0];
+                    string[] p = pair[1].Split('|');
 
-                output.Add(k, values);
+                    int[] values = new int[p.Length];
+                    for (int n = 0; n < p.Length; n++)
+                        values[n] = Int32.Parse(p[n]);
+
+                    output.Add(k, values);
+                }
             }
 
             return output;
+        }
+
+        static double RateTradingResults(TradingResults results)
+        {
+            return (results.PercentGain - results.AverageDrawdown);
         }
     }
 
@@ -362,6 +413,8 @@ namespace ProbabilisticSeries
 
         public int[] ShortMaOverLong { get; private set; }
 
+        public int[] NewHigh { get; private set; }
+
 
         public TrendIndicator(int shortMaLen, int longMaLen, int trendLen)
         {
@@ -379,9 +432,11 @@ namespace ProbabilisticSeries
         {
             this.TrendUp = new int[data.Length];
             this.TrendDown = new int[data.Length];
+            this.NewHigh = new int[data.Length];
             this.ShortMaOverLong = new int[data.Length];
             int trendUpCount = 0;
             int trendDnCount = 0;
+            double highSoFar = 0; 
 
             _shortMa.Calculate(data);
             _longMa.Calculate(data); 
@@ -390,6 +445,8 @@ namespace ProbabilisticSeries
             {
                 this.TrendUp[n] = 0;
                 this.TrendDown[n] = 0;
+                this.NewHigh[n] = 0;
+
 
                 if (n >= 1)
                 {
@@ -407,7 +464,15 @@ namespace ProbabilisticSeries
                         else
                             trendDnCount = 0;
                     }
+
+                    if (data[n] > highSoFar)
+                    {
+                        highSoFar = data[n];
+                        NewHigh[n] = 1;
+                    }
                 }
+                else
+                    highSoFar = data[n]; 
 
                 this.ShortMaOverLong[n] = (_shortMa.Output[n] > _longMa.Output[n]) ? 1 : 0;
                 this.TrendUp[n] = (trendUpCount >= _trendLen) ? 1 : 0;
@@ -421,7 +486,7 @@ namespace ProbabilisticSeries
         }
     }
 
-    //the close is higher than prev day's, every day. The low is not lower than prev day's low, every day 
+    //goes up by at least N% without going below today's low
     class BreakoutIndicator1 : IIndicator
     {
         private int _breakoutLen; 
@@ -455,6 +520,59 @@ namespace ProbabilisticSeries
                         if (dataSet.Rows[i].Close < dataSet.Rows[i - 1].Close)
                         {
                             this.Output[n] = 0; 
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        public void Calculate(double[] data)
+        {
+            throw new NotImplementedException();
+        }
+
+        public string GetOutputString(int index)
+        {
+            return this.Output[index].ToString();
+        }
+    }
+
+    class BreakoutIndicator2 : IIndicator
+    {
+        private int _breakoutLen;
+
+        public int[] Output { get; private set; }
+
+        public BreakoutIndicator2(int breakoutLen)
+        {
+            _breakoutLen = breakoutLen;
+        }
+
+        //TODO: optimize 
+        public void Calculate(DataSet dataSet)
+        {
+            this.Output = new int[dataSet.Count];
+
+            for (int n = 0; n < dataSet.Count; n++)
+            {
+                if (n < (dataSet.Count - 1))
+                {
+                    this.Output[n] = 1;
+
+                    double start = dataSet.Rows[n+1].Open;
+
+                    for (int i = n + 1; i<dataSet.Count; i++)
+                    {
+                        if (dataSet.Rows[i].Low < dataSet.Rows[n + 1].Low)
+                        {
+                            this.Output[n] = 0;
+                            break;
+                        }
+
+                        if( ((start - dataSet.Close[i]) / start) >= 0.01)
+                        {
+                            this.Output[n] = 1;
                             break;
                         }
                     }
@@ -533,7 +651,6 @@ namespace ProbabilisticSeries
         }
     }
 
-
     class TestTradingSystem : ITradingSystem
     {
         private DataFeatureDefinition _definition;
@@ -605,14 +722,5 @@ namespace ProbabilisticSeries
                 }
             }
         }
-    }
-
-    class TradingResults
-    {
-        public double PercentGain { get; set; }
-
-        public double MaxDrawdown { get; set; }
-
-        public double AverageDrawdown { get; set; }
     }
 }
